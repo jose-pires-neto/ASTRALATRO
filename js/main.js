@@ -174,6 +174,13 @@ function playHand() {
         const fireCenter = new THREE.Vector3(0, 3.5, -5.5);
         engine.triggerFireExplosion(fireCenter, 40);
         
+        // === VFX: Screen Shake (proporcional ao multiplicador!) ===
+        const shakeForce = Math.min(0.2 + (modResult.finalMult * 0.05), 1.5);
+        engine.triggerScreenShake(shakeForce);
+        
+        // === VFX: Flash de Impacto ===
+        ui.triggerImpactFlash();
+        
         // Começa a queimar as cartas progressivamente
         engine.burnCards(sortedMeshes, () => {
             // Quando terminar de queimar, segunda rajada de fogo
@@ -219,6 +226,10 @@ function playHand() {
 
             } else if (gameState.handsLeft === 0) {
                 ui.showDealerDialogue("SUA ALMA É MINHA.", 5000, true);
+                
+                // VFX: Screen Shake e Flash na Derrota!
+                engine.triggerScreenShake(1.5);
+                ui.triggerImpactFlash();
                 
                 // Mãos tentam abraçar sua tela em gameover!
                 engine.dealerState = 'absorbing';

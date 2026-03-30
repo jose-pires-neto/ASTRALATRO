@@ -148,3 +148,62 @@ body {
     transition: opacity 0.5s;
     max-width: 600px;
 }
+
+/* === VFX: Flash de Impacto === */
+#impact-flash {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 25;
+    pointer-events: none;
+    opacity: 0;
+    background: radial-gradient(circle, rgba(255,100,50,0.6) 0%, rgba(255,0,0,0.15) 50%, transparent 80%);
+    transition: opacity 0.08s ease-out;
+}
+
+#impact-flash.active {
+    opacity: 1;
+    transition: opacity 0.02s;
+}
+
+/* === VFX: Vinheta Dinâmica === */
+#vignette-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 15;
+    pointer-events: none;
+    opacity: 0.3;
+    transition: opacity 1.5s ease-in-out;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.9) 100%);
+}
+
+#vignette-overlay.tense {
+    opacity: 0.7;
+    background: radial-gradient(ellipse at center, transparent 20%, rgba(80,0,0,0.6) 60%, rgba(0,0,0,0.95) 100%);
+}
+
+/* === VFX: Slot Machine Score === */
+.slot-digit-wrapper {
+    display: inline-block;
+    overflow: hidden;
+    height: 1.2em;
+    vertical-align: bottom;
+    position:relative;
+}
+
+.slot-digit-inner {
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.slot-digit-inner span {
+    height: 1.2em;
+    line-height: 1.2em;
+    display: block;
+}

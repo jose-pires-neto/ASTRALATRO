@@ -31,6 +31,13 @@ export class Engine3D {
         // VFX: Partículas de fogo temporárias
         this.fireParticles = [];
 
+        // VFX: Screen Shake
+        this.shakeIntensity = 0;
+        this.shakeDecay = 0.9;
+
+        // VFX: Trail de Partículas
+        this.trailParticles = [];
+
         this.shopMode = false;
         
         // Responsividade Câmera
@@ -187,6 +194,30 @@ export class Engine3D {
         }, 60);
     }
 
+    // === VFX: Screen Shake ===
+    triggerScreenShake(intensity = 0.3) {
+        this.shakeIntensity = Math.min(intensity, 1.5);
+    }
+
+    // === VFX: Trail de Partículas em cartas em movimento ===
+    spawnTrail(position) {
+        const geo = new THREE.SphereGeometry(0.04, 3, 3);
+        const mat = new THREE.MeshBasicMaterial({
+            color: new THREE.Color().setHSL(0.0 + Math.random() * 0.08, 1, 0.5),
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending
+        });
+        const trail = new THREE.Mesh(geo, mat);
+        trail.position.copy(position);
+        trail.position.x += (Math.random() - 0.5) * 0.3;
+        trail.position.y += (Math.random() - 0.5) * 0.3;
+        trail.userData.life = 0.6 + Math.random() * 0.4;
+        trail.userData.decay = 0.03;
+        this.scene.add(trail);
+        this.trailParticles.push(trail);
+    }
+
     spawnCardMesh(cardData, cardWidth = 2.5, cardHeight = 3.5, cardThickness = 0.05) {
         const geo = new THREE.BoxGeometry(cardWidth, cardHeight, cardThickness);
         const frontMat = new THREE.MeshBasicMaterial({ map: cardData.texture });
@@ -308,9 +339,7 @@ export class Engine3D {
         if (this.shopMode) {
             this.camera.position.lerp(new THREE.Vector3(0, 1.5, 3), 0.05);
             
-            // Foca a câmera na bandeja invisível para não olhar "através do vazio"
             const lookPos = new THREE.Vector3(0, 0, -5); 
-            // Interpola o LookAt pra não "quebrar o pescoço da câmera"
             const dummyCam = this.camera.clone();
             dummyCam.position.copy(this.camera.position);
             dummyCam.lookAt(lookPos);
@@ -321,13 +350,18 @@ export class Engine3D {
                  if (this.dealerMesh.material.opacity <= 0) this.dealerMesh.visible = false;
             }
         } else {
-            // FIX: Câmera normal sem parallax de mouse (Bug consertado do Purgatório)
-            // Agora a câmera volta SUAVEMENTE pro this.baseCamPos recém calculado!
-            this.camera.position.lerp(this.baseCamPos, 0.03);
+            // Câmera base + Screen Shake
+            const shakeTarget = this.baseCamPos.clone();
+            if (this.shakeIntensity > 0.01) {
+                shakeTarget.x += (Math.random() - 0.5) * this.shakeIntensity;
+                shakeTarget.y += (Math.random() - 0.5) * this.shakeIntensity;
+                this.shakeIntensity *= this.shakeDecay;
+            }
+            this.camera.position.lerp(shakeTarget, 0.08);
             
             const dummyCam = this.camera.clone();
             dummyCam.position.copy(this.camera.position);
-            dummyCam.lookAt(0, 3, 0); // Vira de volta para O DEALER
+            dummyCam.lookAt(0, 3, 0);
             this.camera.quaternion.slerp(dummyCam.quaternion, 0.05);
             
             if (this.dealerMesh && !this.dealerMesh.visible) {
@@ -381,7 +415,7 @@ export class Engine3D {
         for (let i = this.fireParticles.length - 1; i >= 0; i--) {
             const p = this.fireParticles[i];
             p.position.add(p.userData.velocity);
-            p.userData.velocity.y += 0.003; // gravidade inversa (sobe)
+            p.userData.velocity.y += 0.003;
             p.userData.life -= p.userData.decay;
             p.material.opacity = Math.max(0, p.userData.life);
             p.scale.multiplyScalar(0.97);
@@ -391,6 +425,25 @@ export class Engine3D {
                 this.fireParticles.splice(i, 1);
             }
         }
+
+        // === VFX: Atualiza trail de partículas ===
+        for (let i = this.trailParticles.length - 1; i >= 0; i--) {
+            const t = this.trailParticles[i];
+            t.userData.life -= t.userData.decay;
+            t.material.opacity = Math.max(0, t.userData.life);
+            t.scale.multiplyScalar(0.95);
+            if (t.userData.life <= 0) {
+                this.scene.remove(t);
+                this.trailParticles.splice(i, 1);
+            }
+        }
+
+        // === VFX: Spawn trails em cartas visivelmente em movimento ===
+        this.cardMeshes.forEach(mesh => {
+            if (mesh.userData.state === 'playing') {
+                this.spawnTrail(mesh.position);
+            }
+        });
 
         this.cardMeshes.forEach(mesh => {
             mesh.position.lerp(mesh.userData.targetPos, 0.15);

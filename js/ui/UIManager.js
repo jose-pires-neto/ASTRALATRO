@@ -23,12 +23,20 @@ export class UIManager {
             shopSlots: document.getElementById('shop-slots'),
             btnNextBlind: document.getElementById('btn-next-blind'),
             soulsCounter: document.getElementById('souls-counter'),
-            relicsTray: document.getElementById('relics-tray')
+            relicsTray: document.getElementById('relics-tray'),
+            
+            // VFX Overlays
+            impactFlash: document.getElementById('impact-flash'),
+            vignetteOverlay: document.getElementById('vignette-overlay')
         };
+
+        this._lastDisplayedScore = 0;
     }
 
     updateHUD(gameState) {
-        this.elements.currentScore.innerText = gameState.score.toLocaleString();
+        // === SLOT MACHINE SCORE ===
+        this._animateSlotScore(this.elements.currentScore, gameState.score);
+        
         this.elements.targetScore.innerText = gameState.targetScore.toLocaleString();
         this.elements.handsLeft.innerText = gameState.handsLeft;
         this.elements.discardsLeft.innerText = gameState.discardsLeft;
@@ -38,6 +46,37 @@ export class UIManager {
 
         const progress = Math.min((gameState.score / gameState.targetScore) * 100, 100);
         this.elements.scoreBar.style.width = `${progress}%`;
+
+        // === VINHETA DINÂMICA ===
+        this.updateVignette(gameState);
+    }
+
+    _animateSlotScore(element, targetValue) {
+        const targetStr = targetValue.toLocaleString();
+        const currentStr = this._lastDisplayedScore.toLocaleString();
+        
+        // Se m é o mesmo, não faz nada
+        if (targetStr === currentStr && element.querySelector('.slot-digit-wrapper')) return;
+        
+        this._lastDisplayedScore = targetValue;
+        
+        // Constrói os slots dos dígitos
+        let html = '';
+        for (let i = 0; i < targetStr.length; i++) {
+            const char = targetStr[i];
+            if (char === '.' || char === ',') {
+                html += `<span>${char}</span>`;
+                continue;
+            }
+            // Slot roller: mostra dígito atual e o próximo "rolando"
+            const digit = parseInt(char);
+            const prevDigit = (digit + 10 - 1) % 10;
+            html += `<span class="slot-digit-wrapper">`;
+            html += `<span class="slot-digit-inner" style="transform: translateY(-1.2em)">`;
+            html += `<span>${prevDigit}</span><span>${digit}</span>`;
+            html += `</span></span>`;
+        }
+        element.innerHTML = html;
     }
 
     updateHandEvaluation(evalResult, selectedCards) {
@@ -117,11 +156,33 @@ export class UIManager {
                     iconEl.className = 'w-10 h-12 bg-gray-900 border border-gray-600 flex items-center justify-center text-xl rounded shadow-[0_0_8px_rgba(255,255,255,0.1)] relative group cursor-help';
                     iconEl.innerText = found.icon;
                     
-                    // Tooltip simplista
                     iconEl.title = `${found.name}\n${found.description}`;
                     this.elements.relicsTray.appendChild(iconEl);
                 }
             });
         });
+    }
+
+    /* === VFX: Flash de Impacto === */
+    triggerImpactFlash() {
+        const flash = this.elements.impactFlash;
+        flash.classList.add('active');
+        setTimeout(() => flash.classList.remove('active'), 80);
+    }
+
+    /* === VFX: Vinheta Dinâmica === */
+    updateVignette(gameState) {
+        const vig = this.elements.vignetteOverlay;
+        if (!vig) return;
+        
+        const progress = gameState.score / gameState.targetScore;
+        const handsRatio = gameState.handsLeft / 4;
+        
+        // Tense: últimas mãos E score baixo
+        if (handsRatio <= 0.5 && progress < 0.7) {
+            vig.classList.add('tense');
+        } else {
+            vig.classList.remove('tense');
+        }
     }
 }
