@@ -5,12 +5,14 @@ import { Engine3D } from './graphics/Engine3D.js';
 import { InputController } from './input/InputController.js';
 import { UIManager } from './ui/UIManager.js';
 import { ShopManager } from './ui/ShopManager.js';
+import { ScreenManager } from './ui/ScreenManager.js';
 
 let gameState;
 let engine;
 let inputController;
 let ui;
 let shopManager;
+let screenManager;
 
 const dealerPhrasesPlay = [
     "Vamos ver o que você tem.",
@@ -20,32 +22,71 @@ const dealerPhrasesPlay = [
 ];
 
 function init() {
-    gameState = new GameState();
+    // Inicializa a engine 3D SEMPRE (roda no fundo do menu)
+    engine = new Engine3D('game-canvas');
+    engine.animate();
+    
     ui = new UIManager();
+    screenManager = new ScreenManager();
+
+    // === Callbacks do ScreenManager ===
+    screenManager.onStartGame = () => startNewGame();
+    screenManager.onRestartGame = () => {
+        screenManager.transitionTo('game');
+        startNewGame();
+    };
+    screenManager.onBackToMenu = () => {
+        engine.clearCards();
+        engine.setShopMode(false);
+        engine.setTitleMode(true);
+        screenManager.transitionTo('title');
+    };
+    screenManager.onResumeGame = () => {
+        gameState.state = gameState._pausedState || 'playing';
+        screenManager.transitionTo('game');
+    };
+    screenManager.onPauseToggle = (isPausing) => {
+        if (isPausing && gameState.state !== 'paused') {
+            gameState._pausedState = gameState.state;
+            gameState.state = 'paused';
+            screenManager.transitionTo('pause');
+        }
+    };
+
+    // Mostra tela de título (jogo NÃO começa automático)
+    engine.setTitleMode(true);
+    screenManager.transitionTo('title');
+}
+
+function startNewGame() {
+    engine.setTitleMode(false);
+    gameState = new GameState();
     shopManager = new ShopManager(ui, gameState);
 
-    // Conecta o evento de botão da loja
     shopManager.onNextBlind = () => {
         shopManager.closeShop();
         engine.setShopMode(false);
         nextBlind(); 
     };
-    
-    // Configuração do Three.js
-    engine = new Engine3D('game-canvas');
-    engine.animate();
 
-    // Configuração do Input (recebe injeção de dependência para evitar circularidade)
+    if (inputController) inputController.destroy();
     inputController = new InputController(engine, onCardClick, () => gameState.state);
 
-    // Bind Botões UI
-    document.getElementById('btn-play').addEventListener('click', playHand);
-    document.getElementById('btn-discard').addEventListener('click', discardHand);
+    document.getElementById('btn-play').onclick = playHand;
+    document.getElementById('btn-discard').onclick = discardHand;
 
-    // Primeiro Setup
+    engine.clearCards();
+    engine.setShopMode(false);
     gameState.createDeck();
-    dealHand(8);
-    ui.showDealerDialogue("Bem-vindo à mesa... Tente sobreviver.", 4000);
+    
+    screenManager.transitionTo('game');
+    
+    // Delay para a tela transicionar antes de dar as cartas
+    setTimeout(() => {
+        dealHand(8);
+        ui.showDealerDialogue("Bem-vindo à mesa... Tente sobreviver.", 4000);
+        ui.updateEconomyHUD(gameState);
+    }, 600);
 }
 
 function dealHand(count) {
@@ -139,6 +180,9 @@ function playHand() {
     
     // Total Real Ganho
     const pointsGained = modResult.finalChips * modResult.finalMult;
+
+    // Registra stats da run
+    gameState.trackHandPlayed(evalResult.name, pointsGained);
 
     // Animação Macabra: As Mãos esticam para absorver
     engine.dealerState = 'absorbing';
@@ -237,9 +281,13 @@ function playHand() {
                 engine.dealerTargetHandL.set(-8, 8, 8);
                 engine.dealerTargetHandR.set(8, 8, 8);
                 
+                // Atualiza stats finais
+                gameState.runStats.blindsReached = gameState.currentBlind;
+                gameState.runStats.totalSouls = gameState.souls;
+                
                 setTimeout(() => {
                     engine.dealerState = 'idle';
-                    resetGame();
+                    screenManager.transitionTo('gameover', { stats: gameState.runStats });
                 }, 4000);
             } else {
                 dealHand(gameState.selectedCards.length);

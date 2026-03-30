@@ -7,9 +7,20 @@ export class InputController {
         this.onCardClick = onCardClickCallback;
         this.getState = getStateCallback;
 
-        window.addEventListener('mousemove', (e) => this.onMouseMove(e));
-        window.addEventListener('click', () => this.onClick());
-        window.addEventListener('touchstart', (e) => this.onTouch(e), { passive: false });
+        // Salva referências bound pra poder remover depois
+        this._boundMouseMove = (e) => this.onMouseMove(e);
+        this._boundClick = () => this.onClick();
+        this._boundTouch = (e) => this.onTouch(e);
+
+        window.addEventListener('mousemove', this._boundMouseMove);
+        window.addEventListener('click', this._boundClick);
+        window.addEventListener('touchstart', this._boundTouch, { passive: false });
+    }
+
+    destroy() {
+        window.removeEventListener('mousemove', this._boundMouseMove);
+        window.removeEventListener('click', this._boundClick);
+        window.removeEventListener('touchstart', this._boundTouch);
     }
 
     onMouseMove(event) {

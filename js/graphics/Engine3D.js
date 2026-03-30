@@ -38,6 +38,11 @@ export class Engine3D {
         // VFX: Trail de Partículas
         this.trailParticles = [];
 
+        // Menu: Card Rain
+        this.titleMode = false;
+        this.titleCards = [];
+        this._titleSpawnTimer = 0;
+
         this.shopMode = false;
         
         // Responsividade Câmera
@@ -344,9 +349,128 @@ export class Engine3D {
         if (this.deckPileMesh) this.deckPileMesh.visible = !isShop;
     }
 
+    setTitleMode(isTitle) {
+        this.titleMode = isTitle;
+        // Esconde a entidade e deckpile no menu
+        if (this.dealerMesh) this.dealerMesh.visible = !isTitle;
+        if (this.dealerLeftHand) this.dealerLeftHand.visible = !isTitle;
+        if (this.dealerRightHand) this.dealerRightHand.visible = !isTitle;
+        if (this.deckPileMesh) this.deckPileMesh.visible = !isTitle;
+        this.cardMeshes.forEach(m => m.visible = !isTitle);
+
+        if (!isTitle) {
+            // Limpa cartas do título ao sair
+            this.titleCards.forEach(tc => this.scene.remove(tc.mesh));
+            this.titleCards = [];
+        }
+    }
+
+    _spawnTitleCard() {
+        const geo = new THREE.BoxGeometry(2.5, 3.5, 0.05);
+        const frontMat = new THREE.MeshBasicMaterial({ map: this.cardBackTex, transparent: true, opacity: 0 });
+        const edgeMat = new THREE.MeshBasicMaterial({ color: 0x111111, transparent: true, opacity: 0 });
+        const materials = [edgeMat, edgeMat, edgeMat, edgeMat, frontMat, frontMat];
+
+        const mesh = new THREE.Mesh(geo, materials);
+        
+        // Posição aleatória espalhada pela cena
+        mesh.position.set(
+            (Math.random() - 0.5) * 20,
+            -5 - Math.random() * 3,
+            -8 - Math.random() * 10
+        );
+        mesh.rotation.set(
+            (Math.random() - 0.5) * 0.5,
+            Math.PI + (Math.random() - 0.5) * 0.3,
+            (Math.random() - 0.5) * 0.4
+        );
+
+        this.scene.add(mesh);
+
+        this.titleCards.push({
+            mesh,
+            phase: 'rising',    // rising -> burning -> dead
+            speed: 0.008 + Math.random() * 0.012,
+            life: 1.0,
+            maxY: 8 + Math.random() * 4
+        });
+    }
+
+    _updateTitleCards() {
+        const time = this.clock.getElapsedTime();
+
+        // Spa timer
+        this._titleSpawnTimer += 0.016;
+        if (this._titleSpawnTimer > 0.8 && this.titleCards.length < 15) {
+            this._spawnTitleCard();
+            this._titleSpawnTimer = 0;
+        }
+
+        for (let i = this.titleCards.length - 1; i >= 0; i--) {
+            const tc = this.titleCards[i];
+            const mesh = tc.mesh;
+
+            if (tc.phase === 'rising') {
+                // Sobe suavemente
+                mesh.position.y += tc.speed * 60 * 0.016;
+                // Rotação lenta
+                mesh.rotation.z += Math.sin(time + i) * 0.002;
+                mesh.rotation.x += 0.001;
+
+                // Fade in
+                const opacity = Math.min(1, (mesh.position.y + 5) / 4) * 0.6;
+                mesh.material.forEach(m => { m.opacity = opacity; });
+
+                // Quando chega certa altura, começa a queimar
+                if (mesh.position.y > tc.maxY) {
+                    tc.phase = 'burning';
+                    tc.life = 1.0;
+                    // Faiscas no momento da ignição
+                    this.triggerFireExplosion(mesh.position.clone(), 8);
+                }
+            } else if (tc.phase === 'burning') {
+                tc.life -= 0.02;
+                // Continua subindo mais devagar
+                mesh.position.y += tc.speed * 20 * 0.016;
+
+                // Vermelhece e some
+                mesh.material.forEach(m => {
+                    if (m.color) m.color.lerp(new THREE.Color(0x440000), 0.1);
+                    m.opacity = Math.max(0, tc.life * 0.6);
+                });
+
+                // Encolhe
+                mesh.scale.multiplyScalar(0.98);
+
+                // Solta faisquinhas ocasionais
+                if (Math.random() < 0.15) {
+                    this.triggerFireExplosion(mesh.position.clone(), 3);
+                }
+
+                if (tc.life <= 0) {
+                    tc.phase = 'dead';
+                }
+            } else {
+                this.scene.remove(mesh);
+                this.titleCards.splice(i, 1);
+            }
+        }
+    }
+
     animate() {
         requestAnimationFrame(() => this.animate());
         const time = this.clock.getElapsedTime();
+
+        // === Title Screen: Card Rain ===
+        if (this.titleMode) {
+            this._updateTitleCards();
+            // Câmera olha pras cartas subindo
+            this.camera.position.lerp(new THREE.Vector3(0, 5, 12), 0.02);
+            const dummyCam = this.camera.clone();
+            dummyCam.position.copy(this.camera.position);
+            dummyCam.lookAt(0, 5, -5);
+            this.camera.quaternion.slerp(dummyCam.quaternion, 0.03);
+        }
 
         // Animação de câmera para a loja
         if (this.shopMode) {
@@ -362,8 +486,8 @@ export class Engine3D {
                  this.dealerMesh.material.opacity -= 0.05;
                  if (this.dealerMesh.material.opacity <= 0) this.dealerMesh.visible = false;
             }
-        } else {
-            // Câmera base + Screen Shake
+        } else if (!this.titleMode) {
+            // Câmera base + Screen Shake (SÓ FORA DO MENU)
             const shakeTarget = this.baseCamPos.clone();
             if (this.shakeIntensity > 0.01) {
                 shakeTarget.x += (Math.random() - 0.5) * this.shakeIntensity;
@@ -395,7 +519,7 @@ export class Engine3D {
             this.particles.geometry.attributes.position.needsUpdate = true;
         }
 
-        if (this.dealerMesh) {
+        if (this.dealerMesh && !this.titleMode) {
             this.dealerMesh.position.y = 3 + Math.sin(time * 1.5) * 0.2;
             this.dealerMesh.rotation.z = Math.sin(time * 0.5) * 0.02;
             

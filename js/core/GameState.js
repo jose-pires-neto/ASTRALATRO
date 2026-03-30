@@ -7,15 +7,30 @@ export class GameState {
         this.hand = [];
         this.selectedCards = [];
         this.score = 0;
-        this.targetScore = 300; // Começando balanceado e possível
+        this.targetScore = 300;
         this.handsLeft = 4;
         this.discardsLeft = 3;
-        this.state = 'playing'; // playing, scoring, discarding, gameover, shop
+        this.state = 'playing';
         this.currentBlind = 1;
 
         // Economia e Progresso Sombrio
         this.souls = 0; 
-        this.relics = []; // Array de Jokers/Pactos max 5
+        this.relics = [];
+
+        // Stats da Run (para Game Over screen)
+        this.runStats = {
+            blindsReached: 0,
+            bestHandName: '—',
+            bestScore: 0,
+            totalSouls: 0
+        };
+    }
+
+    trackHandPlayed(handName, score) {
+        if (score > this.runStats.bestScore) {
+            this.runStats.bestScore = score;
+            this.runStats.bestHandName = handName;
+        }
     }
 
     createDeck() {
@@ -50,9 +65,15 @@ export class GameState {
         this.hand = [];
         this.state = 'playing';
         
-        // Perde as cartas/pactos ao morrer
         this.souls = 0;
         this.relics = []; 
+        
+        this.runStats = {
+            blindsReached: 0,
+            bestHandName: '—',
+            bestScore: 0,
+            totalSouls: 0
+        };
         
         this.createDeck();
     }
@@ -69,6 +90,8 @@ export class GameState {
 
     nextBlind() {
         this.currentBlind++;
+        this.runStats.blindsReached = this.currentBlind;
+        this.runStats.totalSouls = this.souls;
         this.targetScore = Math.floor(this.targetScore * 2.5);
         this.score = 0;
         this.handsLeft = 4;
