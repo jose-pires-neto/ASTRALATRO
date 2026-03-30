@@ -1,4 +1,4 @@
-import { createDealerTexture, createCardBackTexture, createHandTexture } from './TextureGenerator.js';
+import { createCardBackTexture } from './TextureGenerator.js';
 
 export class Engine3D {
     constructor(canvasId) {
@@ -46,6 +46,19 @@ export class Engine3D {
         this.cardBackTex = createCardBackTexture();
         this.clock = new THREE.Clock();
 
+        // === Sprite Loader ===
+        const loader = new THREE.TextureLoader();
+        const spriteFilter = (tex) => {
+            tex.magFilter = THREE.NearestFilter;
+            tex.minFilter = THREE.NearestFilter;
+        };
+
+        this.entityHeadTex = loader.load('assets/sprites/entity_head.png', spriteFilter);
+        this.handOpenTexL = loader.load('assets/sprites/entity_hand_open_L.png', spriteFilter);
+        this.handOpenTexR = loader.load('assets/sprites/entity_hand_open_R.png', spriteFilter);
+        this.handClosedTexL = loader.load('assets/sprites/entity_hand_closed_L.png', spriteFilter);
+        this.handClosedTexR = loader.load('assets/sprites/entity_hand_closed_R.png', spriteFilter);
+
         this.initLights();
         this.initEnvironment();
         this.initDealer();
@@ -92,21 +105,21 @@ export class Engine3D {
     }
 
     initDealer() {
-        const geo = new THREE.PlaneGeometry(15, 15);
+        // === Cabeça da Entidade (Sprite) ===
+        const geo = new THREE.PlaneGeometry(8, 8);
         const mat = new THREE.MeshBasicMaterial({
-            map: createDealerTexture(),
+            map: this.entityHeadTex,
             transparent: true,
             side: THREE.FrontSide
         });
         this.dealerMesh = new THREE.Mesh(geo, mat);
-        this.dealerMesh.position.set(0, 3, -12);
+        this.dealerMesh.position.set(0, 4, -14);
         this.scene.add(this.dealerMesh);
 
         // === Montante do Baralho (Deck Pile) ===
         const pileMats = [];
         const pileEdgeMat = new THREE.MeshBasicMaterial({ color: 0x110000 });
         const pileTopMat = new THREE.MeshBasicMaterial({ map: this.cardBackTex });
-        // BoxGeometry faces: +x, -x, +y, -y, +z, -z
         pileMats.push(pileEdgeMat, pileEdgeMat, pileTopMat, pileEdgeMat, pileEdgeMat, pileEdgeMat);
         const pileGeo = new THREE.BoxGeometry(2.5, 1.2, 3.5);
         this.deckPileMesh = new THREE.Mesh(pileGeo, pileMats);
@@ -114,15 +127,15 @@ export class Engine3D {
         this.deckPileMesh.rotation.y = 0.15;
         this.scene.add(this.deckPileMesh);
 
-        // === Braços Macabros ===
+        // === Braços da Entidade (Sprites) ===
         const handGeo = new THREE.PlaneGeometry(6, 6);
         const handMatL = new THREE.MeshBasicMaterial({
-            map: createHandTexture(true),
+            map: this.handOpenTexL,
             transparent: true,
             side: THREE.FrontSide
         });
         const handMatR = new THREE.MeshBasicMaterial({
-            map: createHandTexture(false),
+            map: this.handOpenTexR,
             transparent: true,
             side: THREE.FrontSide
         });
@@ -405,6 +418,16 @@ export class Engine3D {
                 this.dealerLeftHand.rotation.z = Math.sin(time) * 0.1;
                 this.dealerRightHand.rotation.z = -Math.sin(time) * 0.1;
                 this.handAnimSpeed = 0.05;
+                
+                // Sprite: Mãos Abertas no Idle
+                this.dealerLeftHand.material.map = this.handOpenTexL;
+                this.dealerRightHand.material.map = this.handOpenTexR;
+            }
+
+            // Sprite: Mãos Fechadas quando Absorvendo
+            if (this.dealerState === 'absorbing') {
+                this.dealerLeftHand.material.map = this.handClosedTexL;
+                this.dealerRightHand.material.map = this.handClosedTexR;
             }
 
             this.dealerLeftHand.position.lerp(this.dealerTargetHandL, this.handAnimSpeed);
