@@ -19,7 +19,6 @@ export class ScreenManager {
         this.onResumeGame = null;
 
         this._bindButtons();
-        this._bindPause();
         
         // Card Rain: inicia se estiver no título
         this._cardRainInterval = null;
@@ -73,7 +72,29 @@ export class ScreenManager {
     }
 
     transitionTo(screenName, data = {}) {
-        // Esconde tela atual
+        // === Caso especial: PAUSE (overlay, não troca de tela) ===
+        if (screenName === 'pause') {
+            const pauseEl = this.screens['pause'];
+            if (pauseEl) {
+                pauseEl.classList.remove('hidden');
+                pauseEl.classList.add('screen-fade-in');
+                setTimeout(() => pauseEl.classList.remove('screen-fade-in'), 500);
+            }
+            this.currentScreen = 'pause';
+            return;
+        }
+
+        // === Caso especial: saindo do PAUSE (volta pro game) ===
+        if (this.currentScreen === 'pause' && screenName === 'game') {
+            const pauseEl = this.screens['pause'];
+            if (pauseEl) {
+                pauseEl.classList.add('hidden');
+            }
+            this.currentScreen = 'game';
+            return;
+        }
+
+        // === Transição normal entre telas ===
         const current = this.screens[this.currentScreen];
         if (current) {
             current.classList.add('screen-fade-out');

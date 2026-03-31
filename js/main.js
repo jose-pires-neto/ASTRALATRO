@@ -6,6 +6,8 @@ import { InputController } from './input/InputController.js';
 import { UIManager } from './ui/UIManager.js';
 import { ShopManager } from './ui/ShopManager.js';
 import { ScreenManager } from './ui/ScreenManager.js';
+import { AudioManager } from './audio/AudioManager.js';
+import { SFXManager } from './audio/SFXManager.js';
 
 let gameState;
 let engine;
@@ -13,6 +15,8 @@ let inputController;
 let ui;
 let shopManager;
 let screenManager;
+let audio;
+let sfx;
 
 const dealerPhrasesPlay = [
     "Vamos ver o que você tem.",
@@ -28,6 +32,8 @@ function init() {
     
     ui = new UIManager();
     screenManager = new ScreenManager();
+    audio = new AudioManager();
+    sfx = new SFXManager();
 
     // === Callbacks do ScreenManager ===
     screenManager.onStartGame = () => startNewGame();
@@ -39,23 +45,71 @@ function init() {
         engine.clearCards();
         engine.setShopMode(false);
         engine.setTitleMode(true);
+        audio.playMenuMusic();
+        document.getElementById('game-controls')?.classList.add('hidden');
         screenManager.transitionTo('title');
     };
-    screenManager.onResumeGame = () => {
-        gameState.state = gameState._pausedState || 'playing';
-        screenManager.transitionTo('game');
-    };
-    screenManager.onPauseToggle = (isPausing) => {
-        if (isPausing && gameState.state !== 'paused') {
-            gameState._pausedState = gameState.state;
-            gameState.state = 'paused';
-            screenManager.transitionTo('pause');
-        }
-    };
+    screenManager.onResumeGame = () => resumeGame();
+
+    // onPauseToggle removido — pausa agora é controlada diretamente via triggerPause()
 
     // Mostra tela de título (jogo NÃO começa automático)
     engine.setTitleMode(true);
     screenManager.transitionTo('title');
+
+    // Música do menu (precisa de interação do usuário pra autoplay)
+    // Tenta tocar imediatamente, se bloqueado, toca no primeiro clique
+    audio.playMenuMusic();
+    document.addEventListener('click', function _firstClick() {
+        audio.playMenuMusic();
+        document.removeEventListener('click', _firstClick);
+    }, { once: true });
+
+    // Botão ÁUDIO no menu
+    const menuMuteBtn = document.getElementById('btn-menu-mute');
+    if (menuMuteBtn) {
+        menuMuteBtn.addEventListener('click', () => {
+            const muted = audio.toggleMute();
+            sfx.setMuted(muted);
+            menuMuteBtn.textContent = muted ? '🔇 MUDO' : '🎧 ÁUDIO';
+            const hudMute = document.getElementById('btn-mute');
+            if (hudMute) hudMute.textContent = muted ? '🔇' : '🔊';
+        });
+    }
+
+    // === PAUSA: Binding direto ===
+    const pauseBtn = document.getElementById('btn-pause');
+    if (pauseBtn) {
+        pauseBtn.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            triggerPause();
+        });
+    }
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            if (screenManager.currentScreen === 'game') {
+                triggerPause();
+            } else if (screenManager.currentScreen === 'pause') {
+                resumeGame();
+            }
+        }
+    });
+}
+
+function triggerPause() {
+    if (!gameState || gameState.state === 'paused') return;
+    sfx.play('pause');
+    gameState._pausedState = gameState.state;
+    gameState.state = 'paused';
+    screenManager.transitionTo('pause');
+}
+
+function resumeGame() {
+    if (!gameState) return;
+    gameState.state = gameState._pausedState || 'playing';
+    screenManager.transitionTo('game');
 }
 
 function startNewGame() {
@@ -74,12 +128,26 @@ function startNewGame() {
 
     document.getElementById('btn-play').onclick = playHand;
     document.getElementById('btn-discard').onclick = discardHand;
+    
+    // Mute toggle
+    const muteBtn = document.getElementById('btn-mute');
+    if (muteBtn) {
+        muteBtn.onclick = () => {
+            const muted = audio.toggleMute();
+            sfx.setMuted(muted);
+            muteBtn.textContent = muted ? '🔇' : '🔊';
+        };
+    }
 
     engine.clearCards();
     engine.setShopMode(false);
     gameState.createDeck();
     
     screenManager.transitionTo('game');
+    document.getElementById('game-controls')?.classList.remove('hidden');
+    
+    // Música de run!
+    audio.playRunMusic();
     
     // Delay para a tela transicionar antes de dar as cartas
     setTimeout(() => {
@@ -90,7 +158,11 @@ function startNewGame() {
 }
 
 function dealHand(count) {
-    if (count <= 0) {
+    // Garante que a mão nunca ultrapasse 8 cartas
+    const maxHandSize = 8;
+    const actualCount = Math.min(count, maxHandSize - gameState.hand.length);
+    
+    if (actualCount <= 0) {
         ui.updateHUD(gameState);
         return;
     }
@@ -108,7 +180,7 @@ function dealHand(count) {
     let dealtCount = 0;
 
     const dealNextCard = () => {
-        if (dealtCount >= count) {
+        if (dealtCount >= actualCount) {
             engine.dealerState = 'idle';
             ui.updateHUD(gameState);
             return;
@@ -132,6 +204,7 @@ function dealHand(count) {
         engine.updateCardPositions(12, gameState.state);
 
         dealtCount++;
+        sfx.play('card_deal');
         setTimeout(dealNextCard, 80);
     };
 
@@ -142,10 +215,12 @@ function onCardClick(cardUserData) {
     if (cardUserData.isSelected) {
         cardUserData.isSelected = false;
         gameState.selectedCards = gameState.selectedCards.filter(c => c.id !== cardUserData.cardData.id);
+        sfx.play('card_deselect');
     } else {
         if (gameState.selectedCards.length < 5) {
             cardUserData.isSelected = true;
             gameState.selectedCards.push(cardUserData.cardData);
+            sfx.play('card_select');
         }
     }
     
@@ -169,6 +244,7 @@ function onCardClick(cardUserData) {
 function playHand() {
     if (gameState.selectedCards.length === 0 || gameState.handsLeft <= 0 || gameState.state !== 'playing') return;
     
+    sfx.play('card_play');
     gameState.state = 'scoring';
     gameState.handsLeft--;
     ui.updateHUD(gameState);
@@ -224,11 +300,13 @@ function playHand() {
         
         // === VFX: Flash de Impacto ===
         ui.triggerImpactFlash();
+        sfx.play('impact');
         
         // Começa a queimar as cartas progressivamente
         engine.burnCards(sortedMeshes, () => {
             // Quando terminar de queimar, segunda rajada de fogo
             engine.triggerFireExplosion(fireCenter, 20);
+            sfx.play('card_burn');
         });
         
         // Envia feedback pra UI refletindo os multiplicadores Sombrios
@@ -249,6 +327,7 @@ function playHand() {
             }
             gameState.score = currentTotal;
             ui.updateHUD(gameState);
+            sfx.play('score_tick');
         }, 50);
 
         setTimeout(() => {
@@ -257,6 +336,7 @@ function playHand() {
             engine.dealerState = 'idle';
             if (gameState.score >= gameState.targetScore) {
                 // Venceu a rodada! 
+                sfx.play('blind_win');
                 const earnResult = gameState.calculateBlindReward();
                 gameState.souls = RelicSystem.applyEconomyModifiers(earnResult, gameState);
                 
@@ -272,6 +352,7 @@ function playHand() {
                 ui.showDealerDialogue("SUA ALMA É MINHA.", 5000, true);
                 
                 // VFX: Screen Shake e Flash na Derrota!
+                sfx.play('blind_fail');
                 engine.triggerScreenShake(1.5);
                 ui.triggerImpactFlash();
                 
@@ -306,6 +387,7 @@ function playHand() {
 function discardHand() {
     if (gameState.selectedCards.length === 0 || gameState.discardsLeft <= 0 || gameState.state !== 'playing') return;
     
+    sfx.play('discard');
     gameState.state = 'discarding';
     gameState.discardsLeft--;
     ui.updateHUD(gameState);
@@ -352,6 +434,9 @@ function nextBlind() {
     gameState.nextBlind();
     engine.clearCards();
     dealHand(8);
+    
+    // Transição de música a cada novo blind
+    audio.nextRunTrack();
     
     // Pequeno tweak pro evaluator das relics atualizar na interface ao inicio
     ui.updateEconomyHUD(gameState);

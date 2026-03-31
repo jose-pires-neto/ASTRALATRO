@@ -92,7 +92,11 @@ export class GameState {
         this.currentBlind++;
         this.runStats.blindsReached = this.currentBlind;
         this.runStats.totalSouls = this.souls;
-        this.targetScore = Math.floor(this.targetScore * 2.5);
+        // Scaling balanceado: cresce de forma progressiva mas não exponencial demais
+        // Blind 1: 300 → 2: 450 → 3: 700 → 4: 1100 → 5: 1600 → 6: 2200 → etc.
+        const baseGrowth = 300;
+        const scaleFactor = 1.5;
+        this.targetScore = Math.floor(baseGrowth * Math.pow(scaleFactor, this.currentBlind - 1) + (this.currentBlind * 50));
         this.score = 0;
         this.handsLeft = 4;
         this.discardsLeft = 3;
